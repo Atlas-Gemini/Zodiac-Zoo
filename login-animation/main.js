@@ -1,4 +1,4 @@
-let scene, camera, renderer, door, gears = [], nodes = [], matrixLines = [], dashboard, clock, doorMove = false, doorPositionY = 0, treeExpanded = false, matrixWorld = false, zoomToDashboard = false;
+let scene, camera, renderer, door, gears = [], nodes = [], lines = [], dashboard, clock, doorMove = false, doorPositionY = 0, treeExpanded = false, matrixWorld = false, zoomToDashboard = false;
 
 init();
 animate();
@@ -58,9 +58,9 @@ function init() {
 
 function createTreeNodes() {
     // Create 10 spheres representing "family tree" nodes
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 24; i++) {
         const nodeGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-        const nodeMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 }); // Green spheres
+        const nodeMaterial = new THREE.MeshPhongMaterial({ color: 0x4d4dff }); // Green spheres
         const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
         
         // Place them at the door position initially
@@ -78,26 +78,50 @@ function createTreeNodes() {
     }
 }
 
-function createMatrixGrid() {
-    // Create a grid of 3D lines
-    const gridSize = 30; // Adjust size of the grid
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Green lines
-    const spacing = 2; // Spacing between grid lines
+function createLinesToDashboard() {
+    // Create a line for each node pointing towards the dashboard
+    const dashboardPosition = new THREE.Vector3(0, 0, -50); // Dashboard center point
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffd700 }); // Green lines
 
-    for (let i = -gridSize; i <= gridSize; i += spacing) {
-        for (let j = -gridSize; j <= gridSize; j += spacing) {
-            const points = [];
-            // Line from bottom to top along Y-axis
-            points.push(new THREE.Vector3(i, -gridSize, j));
-            points.push(new THREE.Vector3(i, gridSize, j));
+    nodes.forEach(node => {
+        const points = [];
 
-            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(lineGeometry, lineMaterial);
+        // Line starts at the node position
+        const startPosition = new THREE.Vector3(node.position.x, node.position.y, node.position.z);
+        points.push(startPosition);
 
-            matrixLines.push(line);
-            scene.add(line);
-        }
-    }
+        // Line ends at the dashboard position (initially it starts short and grows)
+        const endPosition = dashboardPosition.clone();
+        endPosition.multiplyScalar(0.05); // Start short, will grow to full length
+        points.push(endPosition);
+
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(lineGeometry, lineMaterial);
+
+        // Store original points to animate later
+        line.userData = {
+            startPosition: startPosition,
+            endPosition: dashboardPosition.clone(),
+            currentEndPosition: endPosition.clone()
+        };
+
+        lines.push(line);
+        scene.add(line);
+    });
+}
+
+function animateLines() {
+    lines.forEach(line => {
+        // Gradually grow the lines by moving the end point towards the dashboard
+        const { endPosition, currentEndPosition } = line.userData;
+
+        // Move the end position closer to the actual dashboard position
+        currentEndPosition.lerp(endPosition, 0.005); // Slower lerp (0.005) for slower movement
+
+        // Update the geometry of the line with the new end point
+        const points = [line.userData.startPosition, currentEndPosition];
+        line.geometry.setFromPoints(points);
+    });
 }
 
 function animate() {
@@ -138,37 +162,26 @@ function animate() {
         // Transition to matrix world after nodes expand
         if (elapsedTime > 10) {
             matrixWorld = true;
-            createMatrixGrid(); // Trigger Matrix World creation
+            createLinesToDashboard(); // Trigger Lines to Dashboard creation
         }
     }
 
-    // Animate the matrix world lines (scroll downward)
-    if (matrixWorld && !zoomToDashboard) {
-        matrixLines.forEach((line) => {
-            line.position.y -= 0.1; // Move lines downward
-            if (line.position.y < -30) {
-                line.position.y = 30; // Loop back when off screen
-            }
-        });
-
-        // Start zooming towards the dashboard after 15 seconds
-        if (elapsedTime > 15) {
-            zoomToDashboard = true;
-        }
+    // Animate the lines from nodes to the dashboard with slow interpolation
+    if (matrixWorld) {
+        animateLines(); // Slower lerp value in this function
     }
 
     // Zoom in towards the dashboard
+    if (matrixWorld && elapsedTime > 15) {
+        zoomToDashboard = true;
+    }
+
     if (zoomToDashboard) {
         camera.position.z -= 0.1; // Move the camera forward (zoom in)
         if (camera.position.z < -50) {
             camera.position.z = -50; // Stop at the dashboard
         }
     }
-
-    // Spin the gears in alternating directions
-    gears.forEach((gear, index) => {
-        gear.rotation.y += index % 2 === 0 ? 0.02 : -0.02;
-    });
 
     // Render the scene
     renderer.render(scene, camera);
